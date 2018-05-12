@@ -1,0 +1,53 @@
+---
+title: "City of Syracuse Snowplow Analysis"
+author: "James Mason"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import Data
+
+First we want to import our dataset. It can be downloadded here http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0.
+
+A description of the variables in the dataset can be found here https://github.com/CityofSyracuse/OpenDataDictionaries/blob/master/snowplow_DataDictionary.csv.
+
+We will use read_csv from readr to import the dataset, so we need to load it. Since we will be using most librarys in tidyverse, we will load the tidyverse library.
+
+```{r load_tidyverse}
+library(tidyverse)
+```
+
+```{r load_dataset}
+plow_df <- read_csv("data/Snowplow_Data_January_3_2018.csv")
+
+head(plow_df)
+```
+
+A brief look at the dataset shows that we have more columns than the documentation describes. X is identical to the longitude variable, and Y is the same as the latitude. These columns can be safely removed.
+
+All of the trucks in our dataset are snowplows, so they are all under the category "SNOW & ICE". It is therefore safe to remove repair_type.
+
+X3 is a row ID number. It appears to come from a different table. We also have OBJECTID, which is the row number for each entity in this specific table. We therefore don't need X3 as we can use OBJECTID if we need unique identifiers.
+
+In order to remove the variables we don't need, we will use select() from dplyr. 
+
+```{r unselect_cols}
+simple_plow_df <- plow_df %>%
+  select(-X, -Y, -X3, -repair_type)
+
+head(simple_plow_df)
+```
+
+## Tidying the Dataset
+
+Most of the columns in our dataset are fairly straightforward. truck_name gives the truck ID number, date_fixed gives the date, etc. The column that is untidy is activity_type. 
+
+Activity type gives the specific tasks that the truck did in the last minute. However, every entity doesn't have an activity_type associated with it because that activity continues to occur until otherwise specified. For example, after "Plow Down", the truck continues to have its plow down until "Plow Up".
+
+We need to make it so that  
+
+
+
