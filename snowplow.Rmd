@@ -47,7 +47,103 @@ Most of the columns in our dataset are fairly straightforward. truck_name gives 
 
 Activity type gives the specific tasks that the truck did in the last minute. However, every entity doesn't have an activity_type associated with it because that activity continues to occur until otherwise specified. For example, after "Plow Down", the truck continues to have its plow down until "Plow Up".
 
-We need to make it so that  
+We need to make it so that each entity has a variable that describes each of the possible actions. We will need variables that describe the status of the ignition, the plow, the spreader, the auxiliary motor, and whether it is moving or not.
+
+### Prasing activity_type
+First I'm going to parse activity_type, and split it up into new variables using mutate and case_when. If it is the beginning of an action, I will mark it with a 2. If it is the end, I will mark it with a 1. If it doesn't contain the action it will be marked with a 0.
+
+```{r split_activity_type}
+split_plow_df <- simple_plow_df %>%
+  mutate(moving = case_when(
+    grepl("Start Moving", activity_type) ~ 2,
+    grepl("Stop Moving", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(ignition = case_when(
+    grepl("Ignition On", activity_type) ~ 2,
+    grepl("Ignition Off", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(plow = case_when(
+    grepl("Plow Down", activity_type) ~ 2,
+    grepl("Plow Up", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(spreader = case_when(
+    grepl("Spreader On", activity_type) ~ 2,
+    grepl("Spreader Off", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(aux_motor = case_when(
+    grepl("Aux Motor On", activity_type) ~ 2,
+    grepl("Aux Motor off", activity_type) ~ 1,
+    TRUE ~ 0
+  ))
+
+head(split_plow_df)
+```
+
+
+### Assigning State Variables
+
+Now that we've parsed activity_type, we need to go through and set all of the variables between the bounds to be either on or off. 
+
+In other words, for every single truck, when ordered by time, we need to assign $variable(t_i) = 1, \forall t_i \in (t_s,t_e)$ where $t_s$ is the time when the variable becomes TRUE and $t_e$ is the time when the variable becomes FALSE.
+
+One issue that we will have to account for is that some of the snow plows were working at time 00:00:00 which is the start of the dataset. For these trucks we may see a command that doesn't appear applicable. For example, we may see "Plow Up" when we haven't already seen a "Plow Down". If this occurs, we can reasonably assume that the feature was in the on position at the start of the dataset.
+
+```{r assign_inner_vars}
+#Make an empty tible. We will append tempary tibbles to it
+completed_df <- filter(split_plow_df, truck_name == "0")
+
+for (truck in levels(factor(split_plow_df$truck_name))){
+  #select the rows only relevent to a specific truck
+  temp <- filter(split_plow_df, truck_name == truck)
+  
+  #sort the rows by time (OBJECTID is sorted)
+  temp <- temp[order(temp$date_fixed),]
+  
+  for (var in c("moving", "ignition", "plow", "spreader", "aux_motor")){
+    unseen <- TRUE
+    toggle <- 0
+    
+    for (i in seq(1, nrow(temp))){
+      if (temp[[i,var]] == 1){
+        #checks if the earlier moves should be on
+        if (unseen & i > 1){
+          for (j in seq(1, i - 1)){
+            temp[[j,var]] <- 1
+          }
+        }
+        toggle <- 0
+      }else if (temp[[i,var]] == 2){
+        toggle <- 1
+        unseen <- FALSE
+      }
+      
+      temp[[i,var]] <- toggle
+    }
+  }
+    
+  #use rbind to combine the table back together
+  completed_df <- rbind(completed_df, temp) 
+} 
+```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
