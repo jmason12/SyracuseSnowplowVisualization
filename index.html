@@ -1,0 +1,252 @@
+---
+title: "City of Syracuse Snowplow Analysis"
+author: "James Mason"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import Data
+
+First we want to import our dataset. It can be downloadded here http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0.
+
+A description of the variables in the dataset can be found here https://github.com/CityofSyracuse/OpenDataDictionaries/blob/master/snowplow_DataDictionary.csv.
+
+We will use read_csv from readr to import the dataset, so we need to load it. Since we will be using most librarys in tidyverse, we will load the tidyverse library.
+
+```{r load_tidyverse}
+library(tidyverse)
+```
+
+```{r load_dataset}
+plow_df <- read_csv("data/Snowplow_Data_January_3_2018.csv")
+
+head(plow_df)
+```
+
+A brief look at the dataset shows that we have more columns than the documentation describes. X is identical to the longitude variable, and Y is the same as the latitude. These columns can be safely removed.
+
+All of the trucks in our dataset are snowplows, so they are all under the category "SNOW & ICE". It is therefore safe to remove repair_type.
+
+X3 is a row ID number. It appears to come from a different table. We also have OBJECTID, which is the row number for each entity in this specific table. We therefore don't need X3 as we can use OBJECTID if we need unique identifiers.
+
+In order to remove the variables we don't need, we will use select() from dplyr. 
+
+```{r unselect_cols}
+simple_plow_df <- plow_df %>%
+  select(-X, -Y, -X3, -repair_type)
+
+head(simple_plow_df)
+```
+
+## Tidying the Dataset
+
+Most of the columns in our dataset are fairly straightforward. truck_name gives the truck ID number, date_fixed gives the date, etc. The column that is untidy is activity_type. 
+
+Activity type gives the specific tasks that the truck did in the last minute. However, every entity doesn't have an activity_type associated with it because that activity continues to occur until otherwise specified. For example, after "Plow Down", the truck continues to have its plow down until "Plow Up".
+
+We need to make it so that each entity has a variable that describes each of the possible actions. We will need variables that describe the status of the ignition, the plow, the spreader, the auxiliary motor, and whether it is moving or not.
+
+### Prasing activity_type
+First I'm going to parse activity_type, and split it up into new variables using mutate and case_when. If it is the beginning of an action, I will mark it with a 2. If it is the end, I will mark it with a 1. If it doesn't contain the action it will be marked with a 0.
+
+```{r split_activity_type}
+split_plow_df <- simple_plow_df %>%
+  mutate(moving = case_when(
+    grepl("Start Moving", activity_type) ~ 2,
+    grepl("Stop Moving", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(ignition = case_when(
+    grepl("Ignition On", activity_type) ~ 2,
+    grepl("Ignition Off", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(plow = case_when(
+    grepl("Plow Down", activity_type) ~ 2,
+    grepl("Plow Up", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(spreader = case_when(
+    grepl("Spreader On", activity_type) ~ 2,
+    grepl("Spreader Off", activity_type) ~ 1,
+    TRUE ~ 0
+  )) %>%
+  
+  mutate(aux_motor = case_when(
+    grepl("Aux Motor On", activity_type) ~ 2,
+    grepl("Aux Motor off", activity_type) ~ 1,
+    TRUE ~ 0
+  ))
+
+head(split_plow_df)
+```
+
+
+### Assigning State Variables
+
+Now that we've parsed activity_type, we need to go through and set all of the variables between the bounds to be either on or off. 
+
+In other words, for every single truck, when ordered by time, we need to assign $variable(t_i) = 1, \forall t_i \in (t_s,t_e)$ where $t_s$ is the time when the variable becomes TRUE and $t_e$ is the time when the variable becomes FALSE.
+
+One issue that we will have to account for is that some of the snow plows were working at time 00:00:00 which is the start of the dataset. For these trucks we may see a command that doesn't appear applicable. For example, we may see "Plow Up" when we haven't already seen a "Plow Down". If this occurs, we can reasonably assume that the feature was in the on position at the start of the dataset.
+
+```{r assign_inner_vars}
+#Make an empty tible. We will append tempary tibbles to it
+completed_df <- filter(split_plow_df, truck_name == "0")
+
+for (truck in levels(factor(split_plow_df$truck_name))){
+  #select the rows only relevent to a specific truck
+  temp <- filter(split_plow_df, truck_name == truck)
+  
+  #sort the rows by time (OBJECTID is sorted)
+  temp <- temp[order(temp$date_fixed),]
+  
+  for (var in c("moving", "ignition", "plow", "spreader", "aux_motor")){
+    unseen <- TRUE
+    toggle <- 0
+    
+    for (i in seq(1, nrow(temp))){
+      if (temp[[i,var]] == 1){
+        #checks if the earlier moves should be on
+        if (unseen & i > 1){
+          for (j in seq(1, i - 1)){
+            temp[[j,var]] <- 1
+          }
+        }
+        toggle <- 0
+      }else if (temp[[i,var]] == 2){
+        toggle <- 1
+        unseen <- FALSE
+      }
+      
+      temp[[i,var]] <- toggle
+    }
+  }
+    
+  #use rbind to combine the table back together
+  completed_df <- rbind(completed_df, temp) 
+} 
+```
+
+
+
+
+
+## Data Exploration
+
+Now that we have tidied the data, we can begin to explore it. We want to look for interesting facts and trends.
+
+One piece of interest is trying to better unstand how these teams of snow plows work. For example, are there some trucks that only plow snow while other trucks only spread salt or sand? What streets tend to be plowed more often?
+
+
+First let's find out how many trucks we have in the entire dataset. We can do this by changing truck_name to be a factor, and then calling the levels() function to get a vector of all trucks.
+```{r num_trucks}
+trucks <- levels(factor(completed_df$truck_name))
+
+length(trucks)
+```
+
+So 32 trucks are representded in the dataset, so they were at least turned on. However, by combing through the dataset you notice that some of the trucks never even leave the lot. Let's filter the data to only show trucks that moved.
+```{r num_used_trucks}
+used_trucks <- levels(factor(filter(completed_df, moving == 1)$truck_name))
+
+length(used_trucks)
+```
+
+Similarly, let's find out how many trucks plowed snow. This time, we first filter our dataset to only consider trucks that had their plow lowered.
+```{r num_plow_trucks}
+plow_trucks <- levels(factor(filter(completed_df, plow == 1)$truck_name))
+
+length(plow_trucks)
+```
+
+Similarly, the number of trucks that used the spreader, likely to spread salt or sand. 
+```{r num_spread_trucks}
+spread_trucks <- levels(factor(filter(completed_df, spreader == 1)$truck_name))
+
+length(spread_trucks)
+```
+
+Now the number of trucks that used both the spreader and plow.
+```{r num_plow_spread_trucks}
+plow_spread_trucks <- levels(factor(filter(completed_df, spreader == 1, plow == 1)$truck_name))
+
+length(plow_spread_trucks)
+```
+```{r }
+spread_trucks == plow_spread_trucks
+```
+
+We can see that all of the trucks that plowed 
+
+## What areas are clearned the most?
+
+https://rstudio.github.io/leaflet/
+
+https://rstudio.github.io/leaflet/colors.html
+
+
+```{r heatmap}
+library(leaflet)
+
+factpal <- colorFactor(rainbow(plow_trucks), plow_trucks)
+
+plow_map <- 
+  completed_df %>%
+  filter(plow == 1) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(lng = ~longitude, lat = ~latitude, radius = 2, 
+                   popup = ~as.character(truck_name), 
+                   label = ~as.character(truck_name),
+                   color = ~factpal(truck_name)) %>%
+  setView(lat=43.05, lng=-76.15, zoom=12)
+
+plow_map
+```
+
+
+
+```{r most_plowed_streats}
+streets_df <- completed_df %>%
+  filter(plow == 1) %>%
+  mutate(street = str_trim(
+                  str_remove(
+                  str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"))) %>%
+  count(street)
+  
+streets_df[order(streets_df$n, decreasing = TRUE),]
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
