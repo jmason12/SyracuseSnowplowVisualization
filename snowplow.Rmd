@@ -138,6 +138,109 @@ for (truck in levels(factor(split_plow_df$truck_name))){
 
 
 
+## Data Exploration
+
+Now that we have tidied the data, we can begin to explore it. We want to look for interesting facts and trends.
+
+One piece of interest is trying to better unstand how these teams of snow plows work. For example, are there some trucks that only plow snow while other trucks only spread salt or sand? What streets tend to be plowed more often?
+
+
+First let's find out how many trucks we have in the entire dataset. We can do this by changing truck_name to be a factor, and then calling the levels() function to get a vector of all trucks.
+```{r num_trucks}
+trucks <- levels(factor(completed_df$truck_name))
+
+length(trucks)
+```
+
+So 32 trucks are representded in the dataset, so they were at least turned on. However, by combing through the dataset you notice that some of the trucks never even leave the lot. Let's filter the data to only show trucks that moved.
+```{r num_used_trucks}
+used_trucks <- levels(factor(filter(completed_df, moving == 1)$truck_name))
+
+length(used_trucks)
+```
+
+Similarly, let's find out how many trucks plowed snow. This time, we first filter our dataset to only consider trucks that had their plow lowered.
+```{r num_plow_trucks}
+plow_trucks <- levels(factor(filter(completed_df, plow == 1)$truck_name))
+
+length(plow_trucks)
+```
+
+Similarly, the number of trucks that used the spreader, likely to spread salt or sand. 
+```{r num_spread_trucks}
+spread_trucks <- levels(factor(filter(completed_df, spreader == 1)$truck_name))
+
+length(spread_trucks)
+```
+
+Now the number of trucks that used both the spreader and plow.
+```{r num_plow_spread_trucks}
+plow_spread_trucks <- levels(factor(filter(completed_df, spreader == 1, plow == 1)$truck_name))
+
+length(plow_spread_trucks)
+```
+```{r }
+spread_trucks == plow_spread_trucks
+```
+
+We can see that all of the trucks that plowed 
+
+## What areas are clearned the most?
+
+https://rstudio.github.io/leaflet/
+
+https://rstudio.github.io/leaflet/colors.html
+
+
+```{r heatmap}
+library(leaflet)
+
+factpal <- colorFactor(rainbow(plow_trucks), plow_trucks)
+
+plow_map <- 
+  completed_df %>%
+  filter(plow == 1) %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(lng = ~longitude, lat = ~latitude, radius = 2, 
+                   popup = ~as.character(truck_name), 
+                   label = ~as.character(truck_name),
+                   color = ~factpal(truck_name)) %>%
+  setView(lat=43.05, lng=-76.15, zoom=12)
+
+plow_map
+```
+
+
+
+```{r most_plowed_streats}
+streets_df <- completed_df %>%
+  filter(plow == 1) %>%
+  mutate(street = str_trim(
+                  str_remove(
+                  str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"))) %>%
+  count(street)
+  
+streets_df[order(streets_df$n, decreasing = TRUE),]
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
