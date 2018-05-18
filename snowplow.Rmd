@@ -4,6 +4,8 @@ author: "James Mason"
 output: html_document
 ---
 
+With an average yearly snowfall of 126.3 inches, Syracuse, New York is the [snowiest city in the U.S.](https://weather.com/storms/winter/news/20-snowiest-large-cities-america-20140130#/20). In order to keep roads safe, snow and ice removal is an important industry in the city. Today we will be exploring a snowplow data from January, 3rd, 2018. The dataset describes the location of several different snow plows at different times, as well as what they were doing.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -210,30 +212,9 @@ Of the trucks that didn't use a plow, spreader, or auxiliary motor, truck 257 is
 
 The other trucks in non_labeled_trucks appear to be driving around. They may be plowing snow, but lack the sensors to report exactly what they are doing. 
 
-Since we don't know what they are doing at different times, we will only perform analysis on trucks that reported using their plow or spreader.
+Since we don't know what they are doing at different times, we will focus our analysis on trucks that reported using their plow or spreader. This also comes with an additional benefit. The trucks that reported using their plow or spreader describe their position and actions each minute. Some of the other trucks also report every time they do a new action. Since the reports for the trucks in plow_trucks come at regular intervals, we can do comparisons with them much more easily.
 
-## What areas are cleared the most?
-
-One question of interest is what streets of the city are plowed most often. 
-
-```{r most_plowed_streats}
-streets_df <- completed_df %>%
-  filter(plow == 1) %>%
-  mutate(street = str_trim(
-                  str_remove(
-                  str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"))) %>%
-  count(street)
-  
-streets_df[order(streets_df$n, decreasing = TRUE),]
-
-```
-
-
-
-https://rstudio.github.io/leaflet/
-
-https://rstudio.github.io/leaflet/colors.html
-
+### Make Filtered Dataframes
 In order to create a new dataframe that is filtered on certain kinds of trucks, we can use the %in% operator. 
 
 Let's make a dataframe for trucks that are plowing.
@@ -242,15 +223,79 @@ active_plow_df <- completed_df[completed_df$truck_name %in% plow_trucks &
                               completed_df$plow == 1,]
 ```
 
-Now we will do the same thing but for other groups
+Now we will do the same thing but for the trucks that don't have as accurate readers.
 ```{r mia_trucks_df}
 mia_trucks_df <- completed_df[completed_df$truck_name %in% mia_trucks,]
+```
 
+## What areas are cleared the most?
+
+One question of interest is what streets of the city are plowed most often. In order to do this we want to count the number of times that we visit each street while plowing.
+
+Unfortunately, the street addresses given to us aren't perfect for the job. Firstly, we need to remove the house number that comes with the address so that we get a view of the entire street. Similarly, we need to remove additional information when the address contains "&" and "TO". These are used when the truck is on the intersection of two streets, or when they need to break up a street due to lack of house numbers. Some of the trucks also include the area code or "SYRACUSE", which also needs to be removed.
+
+We will remove these using [regex and str_remove](https://cran.r-project.org/web/packages/stringr/vignettes/stringr.html). We will also trim any remaining whitespace off the ends.
+
+```{r most_plowed_streats}
+streets_df <- active_plow_df %>%
+  mutate(street = str_trim(
+                  str_remove(
+                  str_remove(
+                  str_remove(
+                  str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"), "\\d{5}"),
+                            "SYRACUSE")))
+
+streets_count_df <- streets_df %>%
+  count(street)
+  
+streets_count_df[order(streets_count_df$n, decreasing = TRUE),]
 
 ```
 
 
+These results are a little strange. Canal Street is where the DPW stores their trucks, so it makes sense that the trucks are there very often. However, this data suggests that they are often plowing this area. This could be that drivers are leaving their plows down when sitting, or it could be a flaw in our data.
 
+The high number of NA streets may be due to the slight innacuracy in the GPS systems. Additionally, they plows may sometimes be on unmarked roads. 
+
+It is suprising that Simon Dr. has the second most visits, considering it is quite small. Every other frequently plowed street is a major street, so why is Simon Dr. on here?
+
+```{r simon_drive}
+streets_df %>%
+  filter(street == "SIMON DR") %>%
+  count(truck_name)
+
+```
+
+It appears that truck 284 spent a lot of time sitting at Simon Drive. When looking at the data for truck 284, we can notice that it spent almost all of its time sitting at Canal Street and Simon Drive. Since this is skewing our data, further analysis will be done without including truck 284.
+
+```{r remove_284_anal}
+active_df <- active_plow_df %>%
+  filter(truck_name != 284)
+
+tidy_streets_df <- active_df %>%
+  mutate(street = str_trim(
+                  str_remove(
+                  str_remove(
+                  str_remove(
+                  str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"), "\\d{5}"),
+                            "SYRACUSE")))
+
+streets_count_df1 <- tidy_streets_df %>%
+  count(street)
+  
+streets_count_df1[order(streets_count_df1$n, decreasing = TRUE),]
+
+```
+
+These results are much more reasonable. We can see that James Street and I-690 Eastbound are the streets that the trucks spent the most time on.
+
+
+
+Since we have the positional coordinates of the trucks, we can visualize the different positions of the trucks onto a map. We will use [leaflet](https://rstudio.github.io/leaflet/) for this purpose.
+
+Since a mass of points can be overwelming, it is also nice to [color the points](https://rstudio.github.io/leaflet/colors.html). A good attribute to color the points by is the different trucks. This will let us see the areas that the different snow plows cover. We color the points by using colorFactor and the color argument of addCircleMarkers.
+
+We have already split the data into two different groups, the more reliable plow_trucks and the less reliable mia_trucks. We can then display these groups seperately on the graph by [using multiple layers](https://rstudio.github.io/leaflet/showhide.html). By assigning the markers to different groups using the group argument, we can allow the user to control which groups to see using addLayersControl().
 
 
 ```{r loc_map}
@@ -277,7 +322,7 @@ plow_map <-
                    color = factpal_mia(mia_trucks_df$truck_name),
                    group = "Non-plowing Trucks") %>%
   addLayersControl(
-    overlayGroups = c("Plows", "Non-labeled Trucks"),
+    overlayGroups = c("Plows", "Non-plowing Trucks"),
     options = layersControlOptions(collapsed = FALSE)
   ) %>%
   setView(lat=43.05, lng=-76.15, zoom=12)
