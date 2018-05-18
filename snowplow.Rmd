@@ -334,6 +334,9 @@ plow_map
 ```
 
 
+
+
+
 # Potholes filled in 2018
 
 Salt and winter weather is famous for damaging both cars and roads. Since we know what streets were plowed the most on January 3rd, can we identify a statistically significant relationship between the time spent plowing a street and how damaged the street is? 
@@ -456,6 +459,12 @@ The plot of residuals vs fits isn't ideal. It should be symmetrical around resid
 Our scale-location plot is not horrible. There is a bit of a pattern, but it isn't too bad. None of the points on Cook's distance plot are close to 1 so that is fine, too.
 
 Since we don't meet the normality assumption and our coefficient of determination is so low, it is not safe to use our linear model. We could try to perform a nonlinear transformation to try to improve our model, but I have not found a good one.
+
+## Pothole Conclusions
+
+It is probably unwise to make any conclusions about the correlation between the log of pothole frequency and the log of plow time. Both of these variables are highly coorelated with street length. This combined with the fact that the corellation coefficient is so small, as well as the issues with our lienar analysis, suggest that we should follow the null hypothesis of no relationship. 
+
+Part of the reason why we couldn't conclude that there is a relationship could be due to our datasets. The snowplow data is from only one day, and the pothole data only covers a few months. With more snowplow data, especially, our findings may change.
 
 
 
