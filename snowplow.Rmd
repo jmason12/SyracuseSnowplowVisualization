@@ -10,9 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Import Data
 
-First we want to import our dataset. It can be downloadded here http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0.
+First we want to import our dataset. It can be downloadded [here](http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0).
 
-A description of the variables in the dataset can be found here https://github.com/CityofSyracuse/OpenDataDictionaries/blob/master/snowplow_DataDictionary.csv.
+A basic description of the variables in the dataset can be found [here](http://github.com/CityofSyracuse/OpenDataDictionaries/blob/master/snowplow_DataDictionary.csv).
 
 We will use read_csv from readr to import the dataset, so we need to load it. Since we will be using most librarys in tidyverse, we will load the tidyverse library.
 
@@ -142,6 +142,8 @@ for (truck in levels(factor(split_plow_df$truck_name))){
 
 Now that we have tidied the data, we can begin to explore it. We want to look for interesting facts and trends.
 
+### Basic Truck Analysis
+
 One piece of interest is trying to better unstand how these teams of snow plows work. For example, are there some trucks that only plow snow while other trucks only spread salt or sand? What streets tend to be plowed more often?
 
 
@@ -179,39 +181,40 @@ plow_spread_trucks <- levels(factor(filter(completed_df, spreader == 1, plow == 
 
 length(plow_spread_trucks)
 ```
-```{r }
+```{r compare_sets}
 spread_trucks == plow_spread_trucks
 ```
 
-We can see that all of the trucks that plowed 
+We can see that all of the trucks that used a spreader also plowed. In fact they did both at the same time at least one point in their run.
 
-## What areas are clearned the most?
+While 20 trucks moved, only 13 actually plowed. What happened to the remaining 7? We can figure out what trucks moved but didn't plow snow by using setdiff.
 
-https://rstudio.github.io/leaflet/
+```{r missing_trucks}
+mia_trucks <- setdiff(used_trucks, plow_trucks)
 
-https://rstudio.github.io/leaflet/colors.html
-
-
-```{r heatmap}
-library(leaflet)
-
-factpal <- colorFactor(rainbow(plow_trucks), plow_trucks)
-
-plow_map <- 
-  completed_df %>%
-  filter(plow == 1) %>%
-  leaflet() %>%
-  addTiles() %>%
-  addCircleMarkers(lng = ~longitude, lat = ~latitude, radius = 2, 
-                   popup = ~as.character(truck_name), 
-                   label = ~as.character(truck_name),
-                   color = ~factpal(truck_name)) %>%
-  setView(lat=43.05, lng=-76.15, zoom=12)
-
-plow_map
+mia_trucks
 ```
 
 
+One variable that we haven't looked at yet is aux_motor. I haven't discussed this yet because it is ambiguous as to what it means. Turning on the auxiliary motor could be operating a plow or a spreader 
+
+```{r non_label_trucks}
+aux_motor_trucks <- levels(factor(filter(completed_df, aux_motor == 1)$truck_name))
+
+non_labeled_trucks <- setdiff(mia_trucks, aux_motor_trucks)
+
+non_labeled_trucks
+```
+
+Of the trucks that didn't use a plow, spreader, or auxiliary motor, truck 257 is of particular interest. It drove from the DPW at 1200 Canal Street to a gas station at 3100 Erie Boulevard, and then back to 1200 Canal Street. We can therefore infer that the City of Syracuse DPW does not own their own gas station.
+
+The other trucks in non_labeled_trucks appear to be driving around. They may be plowing snow, but lack the sensors to report exactly what they are doing. 
+
+Since we don't know what they are doing at different times, we will only perform analysis on trucks that reported using their plow or spreader.
+
+## What areas are cleared the most?
+
+One question of interest is what streets of the city are plowed most often. 
 
 ```{r most_plowed_streats}
 streets_df <- completed_df %>%
@@ -224,6 +227,64 @@ streets_df <- completed_df %>%
 streets_df[order(streets_df$n, decreasing = TRUE),]
 
 ```
+
+
+
+https://rstudio.github.io/leaflet/
+
+https://rstudio.github.io/leaflet/colors.html
+
+In order to create a new dataframe that is filtered on certain kinds of trucks, we can use the %in% operator. 
+
+Let's make a dataframe for trucks that are plowing.
+```{r make_active_dataframes}
+active_plow_df <- completed_df[completed_df$truck_name %in% plow_trucks & 
+                              completed_df$plow == 1,]
+```
+
+Now we will do the same thing but for other groups
+```{r mia_trucks_df}
+mia_trucks_df <- completed_df[completed_df$truck_name %in% mia_trucks,]
+
+
+```
+
+
+
+
+
+```{r loc_map}
+library(leaflet)
+
+factpal_plow <- colorFactor(rainbow(plow_trucks, start = 0, end = 0.7), plow_trucks)
+factpal_mia <- colorFactor(rainbow(mia_trucks, start = 0.71, end = 1), mia_trucks)
+
+plow_map <- 
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(lng = active_plow_df$longitude, 
+                   lat = active_plow_df$latitude,
+                   radius = 2, 
+                   popup = as.character(active_plow_df$truck_name), 
+                   label = as.character(active_plow_df$truck_name),
+                   color = factpal_plow(active_plow_df$truck_name),
+                   group = "Plows") %>%
+  addCircleMarkers(lng = mia_trucks_df$longitude, 
+                   lat = mia_trucks_df$latitude,
+                   radius = 2, 
+                   popup = as.character(mia_trucks_df$truck_name), 
+                   label = as.character(mia_trucks_df$truck_name),
+                   color = factpal_mia(mia_trucks_df$truck_name),
+                   group = "Non-plowing Trucks") %>%
+  addLayersControl(
+    overlayGroups = c("Plows", "Non-labeled Trucks"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  setView(lat=43.05, lng=-76.15, zoom=12)
+
+plow_map
+```
+
 
 
 
