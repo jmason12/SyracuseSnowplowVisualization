@@ -2,6 +2,7 @@
 title: "City of Syracuse Snowplow Analysis"
 author: "James Mason"
 output: html_document
+rows.print: 10
 ---
 
 With an average yearly snowfall of 126.3 inches, Syracuse, New York is the [snowiest city in the U.S.](https://weather.com/storms/winter/news/20-snowiest-large-cities-america-20140130#/20). In order to keep roads safe, snow and ice removal is an important industry in the city. Today we will be exploring a snowplow data from January, 3rd, 2018. The dataset describes the location of several different snow plows at different times, as well as what they were doing.
@@ -12,11 +13,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Import Data
 
-First we want to import our dataset. It can be downloadded [here](http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0).
+First we want to import our dataset. It can be downloaded [here](http://data.syrgov.net/datasets/0fe934c49ad84223a695aa791a54c1c1_0).
 
 A basic description of the variables in the dataset can be found [here](http://github.com/CityofSyracuse/OpenDataDictionaries/blob/master/snowplow_DataDictionary.csv).
 
-We will use read_csv from readr to import the dataset, so we need to load it. Since we will be using most librarys in tidyverse, we will load the tidyverse library.
+We will use read_csv from readr to import the dataset, so we need to load it. Since we will be using most libraries in tidyverse, we will load the tidyverse library.
 
 ```{r load_tidyverse}
 library(tidyverse)
@@ -25,7 +26,7 @@ library(tidyverse)
 ```{r load_dataset}
 plow_df <- read_csv("data/Snowplow_Data_January_3_2018.csv")
 
-head(plow_df)
+plow_df
 ```
 
 A brief look at the dataset shows that we have more columns than the documentation describes. X is identical to the longitude variable, and Y is the same as the latitude. These columns can be safely removed.
@@ -85,8 +86,6 @@ split_plow_df <- simple_plow_df %>%
     grepl("Aux Motor off", activity_type) ~ 1,
     TRUE ~ 0
   ))
-
-head(split_plow_df)
 ```
 
 
@@ -133,7 +132,9 @@ for (truck in levels(factor(split_plow_df$truck_name))){
     
   #use rbind to combine the table back together
   completed_df <- rbind(completed_df, temp) 
-} 
+}
+
+head(completed_df)
 ```
 
 
@@ -146,7 +147,7 @@ Now that we have tidied the data, we can begin to explore it. We want to look fo
 
 ### Basic Truck Analysis
 
-One piece of interest is trying to better unstand how these teams of snow plows work. For example, are there some trucks that only plow snow while other trucks only spread salt or sand? What streets tend to be plowed more often?
+One piece of interest is trying to better understand how these teams of snow plows work. For example, are there some trucks that only plow snow while other trucks only spread salt or sand? What streets tend to be plowed more often?
 
 
 First let's find out how many trucks we have in the entire dataset. We can do this by changing truck_name to be a factor, and then calling the levels() function to get a vector of all trucks.
@@ -156,7 +157,7 @@ trucks <- levels(factor(completed_df$truck_name))
 length(trucks)
 ```
 
-So 32 trucks are representded in the dataset, so they were at least turned on. However, by combing through the dataset you notice that some of the trucks never even leave the lot. Let's filter the data to only show trucks that moved.
+So 32 trucks are represented in the dataset, so they were at least turned on. However, by combing through the dataset you notice that some of the trucks never even leave the lot. Let's filter the data to only show trucks that moved.
 ```{r num_used_trucks}
 used_trucks <- levels(factor(filter(completed_df, moving == 1)$truck_name))
 
@@ -234,16 +235,17 @@ One question of interest is what streets of the city are plowed most often. In o
 
 Unfortunately, the street addresses given to us aren't perfect for the job. Firstly, we need to remove the house number that comes with the address so that we get a view of the entire street. Similarly, we need to remove additional information when the address contains "&" and "TO". These are used when the truck is on the intersection of two streets, or when they need to break up a street due to lack of house numbers. Some of the trucks also include the area code or "SYRACUSE", which also needs to be removed.
 
-We will remove these using [regex and str_remove](https://cran.r-project.org/web/packages/stringr/vignettes/stringr.html). We will also trim any remaining whitespace off the ends.
+We will remove these using [regex and str_remove](https://cran.r-project.org/web/packages/stringr/vignettes/stringr.html). We will also trim any remaining white space off the ends.
 
-```{r most_plowed_streats}
+```{r most_plowed_streets}
 streets_df <- active_plow_df %>%
   mutate(street = str_trim(
                   str_remove(
                   str_remove(
                   str_remove(
+                  str_remove(
                   str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"), "\\d{5}"),
-                            "SYRACUSE")))
+                            "SYRACUSE"), "\\*+")))
 
 streets_count_df <- streets_df %>%
   count(street)
@@ -255,9 +257,9 @@ streets_count_df[order(streets_count_df$n, decreasing = TRUE),]
 
 These results are a little strange. Canal Street is where the DPW stores their trucks, so it makes sense that the trucks are there very often. However, this data suggests that they are often plowing this area. This could be that drivers are leaving their plows down when sitting, or it could be a flaw in our data.
 
-The high number of NA streets may be due to the slight innacuracy in the GPS systems. Additionally, they plows may sometimes be on unmarked roads. 
+The high number of NA streets may be due to the slight inaccuracy in the GPS systems. Additionally, they plows may sometimes be on unmarked roads. 
 
-It is suprising that Simon Dr. has the second most visits, considering it is quite small. Every other frequently plowed street is a major street, so why is Simon Dr. on here?
+It is surprising that Simon Dr. has the second most visits, considering it is quite small. Every other frequently plowed street is a major street, so why is Simon Dr. on here?
 
 ```{r simon_drive}
 streets_df %>%
@@ -277,8 +279,9 @@ tidy_streets_df <- active_df %>%
                   str_remove(
                   str_remove(
                   str_remove(
+                  str_remove(
                   str_remove(address, "\\d+.(\\d+)?"), "(&.+)|(TO .*)"), "\\d{5}"),
-                            "SYRACUSE")))
+                            "SYRACUSE"), "\\*+")))
 
 streets_count_df1 <- tidy_streets_df %>%
   count(street)
@@ -289,13 +292,13 @@ streets_count_df1[order(streets_count_df1$n, decreasing = TRUE),]
 
 These results are much more reasonable. We can see that James Street and I-690 Eastbound are the streets that the trucks spent the most time on.
 
-
+### Truck Location Visualization
 
 Since we have the positional coordinates of the trucks, we can visualize the different positions of the trucks onto a map. We will use [leaflet](https://rstudio.github.io/leaflet/) for this purpose.
 
-Since a mass of points can be overwelming, it is also nice to [color the points](https://rstudio.github.io/leaflet/colors.html). A good attribute to color the points by is the different trucks. This will let us see the areas that the different snow plows cover. We color the points by using colorFactor and the color argument of addCircleMarkers.
+Since a mass of points can be overwhelming, it is also nice to [color the points](https://rstudio.github.io/leaflet/colors.html). A good attribute to color the points by is the different trucks. This will let us see the areas that the different snow plows cover. We color the points by using colorFactor and the color argument of addCircleMarkers.
 
-We have already split the data into two different groups, the more reliable plow_trucks and the less reliable mia_trucks. We can then display these groups seperately on the graph by [using multiple layers](https://rstudio.github.io/leaflet/showhide.html). By assigning the markers to different groups using the group argument, we can allow the user to control which groups to see using addLayersControl().
+We have already split the data into two different groups, the more reliable plow_trucks and the less reliable mia_trucks. We can then display these groups separately on the graph by [using multiple layers](https://rstudio.github.io/leaflet/showhide.html). By assigning the markers to different groups using the group argument, we can allow the user to control which groups to see using addLayersControl().
 
 
 ```{r loc_map}
@@ -331,28 +334,128 @@ plow_map
 ```
 
 
+# Potholes filled in 2018
+
+Salt and winter weather is famous for damaging both cars and roads. Since we know what streets were plowed the most on January 3rd, can we identify a statistically significant relationship between the time spent plowing a street and how damaged the street is? 
+
+Another dataset that is available from the City of Syracuse is a dataset that lists most of the potholes that have been filled in by the City so far this year. It is missing some data from January and February due to a damaged sensor. It was last updated on May 17, 2018. The dataset can be found [here](http://data.syrgov.net/datasets/potholes-filled-2018).
+
+```{r import_potholes}
+potholes_df <- read_csv("data/Potholes_filled_2018.csv")
+
+potholes_df
+```
+
+Most importantly, the dataset gives us the address that the pothole was repaired on. Can we find a relationship between the number of potholes repaired on a street and how much time was spent plowing the street?
+
+First we need to do the same type of street name scraping that we did with the snow plow dataset. Thankfully, the addresses seem to be in a very similar format. One notable change is that these addresses are not in all capital letters. We will address this by using toupper().
 
 
+```{r pothole_streets, rows.print = 10}
+pothole_streets_df <- potholes_df %>%
+  mutate(street = str_trim(
+                  str_remove(
+                  str_remove(
+                  str_remove(
+                  str_remove(
+                  str_remove(toupper(address), "\\d+.(\\d+)?"), "(&.+)|(TO .*)"), "\\d{5}"),
+                            "SYRACUSE"), "\\*+")))
+
+p_streets_count_df <- pothole_streets_df %>%
+  count(street)
+  
+p_streets_count_df[order(p_streets_count_df$n, decreasing = TRUE),]
+
+```
+
+We will try to join the dataframes by street. First we will change the "n" variable names to be more descriptive.
+
+We will also remove Canal Street from our dataframe. Since it is where the plows are stored, it is a bit of an outlier.
+
+Since freq_potholes has a value of NA when there were no potholes fixed on that street, we will modify freq_potholes so that it will have value 0 instead of NA. We can do this quite easily by using [] and is.na.
+
+```{r join_pholes_plows}
+pothole_plow_df <- plyr::join(rename(streets_count_df1, plow_visits = n),
+                              rename(p_streets_count_df, freq_potholes = n),
+                              by = "street")
+
+pothole_plow_df[is.na(pothole_plow_df)] <- 0
+
+pothole_plow_df <- pothole_plow_df %>% filter(street != "CANAL ST")
+
+head(pothole_plow_df)
+```
 
 
+Let's first make a plot of pothole frequency vs the number of plow visits. This scatter plot will help us get an idea of the shape of the distribution.
+
+```{r pothole_plow_scatter}
+pothole_plow_df %>%
+  ggplot(mapping = aes(x= plow_visits, y= freq_potholes)) +
+  geom_point() +
+  labs(title="Pothole Frequency vs Plow Time",
+         x = "Plow Time",
+         y = "Pothole Frequency")
+```
 
 
+There are many points clustered around the lower left hand side of the graph. This makes it hard to view our data. One way we can make the data less skewed is by taking the log of the axes. 
+
+```{r log_pothole_plow_scatter}
+pothole_plow_df %>%
+  ggplot(mapping = aes(x=log(plow_visits + 1), y=log(freq_potholes+1))) +
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(title="Log Pothole Frequency vs Log Plow Time",
+         x = "Log Plow Time",
+         y = "Log Pothole Frequency")
+```
 
 
+The log transformation made our data much more manageable. There appears to be a weak positive relationship between the log pothole frequency and the log plow time. Let's try to verify this by fitting a linear model. A linear model may not be appropriate for this relationship, but it is a good place to start.
+
+First we need to take preform the logarithmic transformation on our data.
+
+```{r make_log_pp_df}
+log_pp_df <- pothole_plow_df %>%
+  mutate(log_plow_visits = log2(plow_visits + 1),
+         log_freq_potholes = log2(freq_potholes + 1))
+  
+head(log_pp_df)
+```
+
+Now we can create a linear model. broom::glance() will tell us some important statistics such as the $r^2$ value.
+
+```{r linear_analysis}
+reg <- lm(log_freq_potholes~log_plow_visits, data=log_pp_df)
+
+reg %>%
+  broom::glance()
+```
+
+broom::tidy() will tell us the details of the model itself.
+
+```{r lin_anal2}
+reg %>%
+  broom::tidy()
+```
+
+We can see that there is a significant linear relationship between log_plow_visits and log_freq_potholes because the model has a p-value that is near zero. With a parameter estimate of 0.4293803, we know that the relationship is positive.
+
+However, the model has a very low $r^2$ value of only 0.156359. We should [check the assumptions of linear regression](http://sphweb.bumc.bu.edu/otlt/MPH-Modules/BS/R/R5_Correlation-Regression/R5_Correlation-Regression7.html) carefully.
+
+An easy way of testing several assumptions, such as normality and homoscedasticity, is by using plot.
+
+```{r test_assumptions}
+plot(reg, which=1:4)
+```
 
 
+The plot of residuals vs fits isn't ideal. It should be symmetrical around residual = 0, but we have many more observations that lie above this line than below. It suggests that our distribution is not linear. The Q-Q plot is also quite bad. Our observations should be around the dotted line, but they are not. These issues suggest that our data doesn't meet the normality assumption. 
 
+Our scale-location plot is not horrible. There is a bit of a pattern, but it isn't too bad. None of the points on Cook's distance plot are close to 1 so that is fine, too.
 
-
-
-
-
-
-
-
-
-
-
+Since we don't meet the normality assumption and our coefficient of determination is so low, it is not safe to use our linear model. We could try to perform a nonlinear transformation to try to improve our model, but I have not found a good one.
 
 
 
