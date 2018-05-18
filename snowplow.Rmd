@@ -7,6 +7,8 @@ rows.print: 10
 
 With an average yearly snowfall of 126.3 inches, Syracuse, New York is the [snowiest city in the U.S.](https://weather.com/storms/winter/news/20-snowiest-large-cities-america-20140130#/20). In order to keep roads safe, snow and ice removal is an important industry in the city. Today we will be exploring a snowplow data from January, 3rd, 2018. The dataset describes the location of several different snow plows at different times, as well as what they were doing.
 
+
+![A snowplow in downtown Syracuse. Source: Michael Greenlar, The Post Standard.](syr_plow_image.jpeg)
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -55,6 +57,8 @@ We need to make it so that each entity has a variable that describes each of the
 ### Prasing activity_type
 First I'm going to parse activity_type, and split it up into new variables using mutate and case_when. If it is the beginning of an action, I will mark it with a 2. If it is the end, I will mark it with a 1. If it doesn't contain the action it will be marked with a 0.
 
+To do this we are going to use grepl and case_when. grepl() returns TRUE if it found the regex pattern anywhere in the string, and false otherwise. While the pattern for this example is simply the string that we want, we can [make more complicated patterns](http://www.rexegg.com/regex-quickstart.html).
+
 ```{r split_activity_type}
 split_plow_df <- simple_plow_df %>%
   mutate(moving = case_when(
@@ -97,6 +101,8 @@ In other words, for every single truck, when ordered by time, we need to assign 
 
 One issue that we will have to account for is that some of the snow plows were working at time 00:00:00 which is the start of the dataset. For these trucks we may see a command that doesn't appear applicable. For example, we may see "Plow Up" when we haven't already seen a "Plow Down". If this occurs, we can reasonably assume that the feature was in the on position at the start of the dataset.
 
+To do this we will make use of [bracket notation](https://rpubs.com/tomhopper/brackets). The brackets are similar in function to using filter() and slice() for taking subsets of the data, and select() for extracting items.
+
 ```{r assign_inner_vars}
 #Make an empty tible. We will append tempary tibbles to it
 completed_df <- filter(split_plow_df, truck_name == "0")
@@ -105,7 +111,7 @@ for (truck in levels(factor(split_plow_df$truck_name))){
   #select the rows only relevent to a specific truck
   temp <- filter(split_plow_df, truck_name == truck)
   
-  #sort the rows by time (OBJECTID is sorted)
+  #sort the rows by time
   temp <- temp[order(temp$date_fixed),]
   
   for (var in c("moving", "ignition", "plow", "spreader", "aux_motor")){
@@ -333,8 +339,9 @@ plow_map <-
 plow_map
 ```
 
+Each of the plowing trucks seem to have their own region that they are responsible for clearing. If you zoom in onto the map, you can see that the trucks are just sequentially visiting all of the roads in their section.
 
-
+We can see from our map that the trucks that are missing information seem to follow patterns similar to the trucks with plow and spreader information. They are probably also plowing.
 
 
 # Potholes filled in 2018
@@ -427,7 +434,7 @@ log_pp_df <- pothole_plow_df %>%
 head(log_pp_df)
 ```
 
-Now we can create a linear model. broom::glance() will tell us some important statistics such as the $r^2$ value.
+Now we can create a [linear model](http://data.princeton.edu/R/linearModels.html) using lm(). broom::glance() will tell us some important statistics such as the $r^2$ value. 
 
 ```{r linear_analysis}
 reg <- lm(log_freq_potholes~log_plow_visits, data=log_pp_df)
@@ -462,7 +469,7 @@ Since we don't meet the normality assumption and our coefficient of determinatio
 
 ## Pothole Conclusions
 
-It is probably unwise to make any conclusions about the correlation between the log of pothole frequency and the log of plow time. Both of these variables are highly coorelated with street length. This combined with the fact that the corellation coefficient is so small, as well as the issues with our lienar analysis, suggest that we should follow the null hypothesis of no relationship. 
+It is probably unwise to make any conclusions about the correlation between the log of pothole frequency and the log of plow time. Both of these variables are highly correlated with street length. This combined with the fact that the correlation coefficient is so small, as well as the issues with our linear analysis, suggest that we should follow the null hypothesis of no relationship. 
 
 Part of the reason why we couldn't conclude that there is a relationship could be due to our datasets. The snowplow data is from only one day, and the pothole data only covers a few months. With more snowplow data, especially, our findings may change.
 
